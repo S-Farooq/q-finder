@@ -118,7 +118,13 @@ async def _startup() -> None:
 @app.get("/", include_in_schema=False)
 async def frontend():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend.html")
+    if Path("frontend.html").exists():
+        return FileResponse("frontend.html")
+    return JSONResponse({
+        "message": "Quran Tracker API",
+        "docs": "/docs",
+        "health": "/health",
+    })
 
 
 @app.get("/health")

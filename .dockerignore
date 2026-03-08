@@ -1,0 +1,17 @@
+# Excluded from backend deployment (not needed for Railway service)
+ar_scripts/
+translation/
+frontend.html
+
+# Local dev
+.venv/
+.env
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.claude/
+*.md
+
+# Scripts not used in container
+start.sh

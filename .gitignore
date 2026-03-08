@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 *.pkl
-*.json
 .DS_Store
 .claude/
+ar_scripts/*
+translation/*

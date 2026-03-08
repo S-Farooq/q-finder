@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quran Tracker — Debug</title>
+  <style>
+    /* ── Reset & base ────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --green:     #3fb950;
+      --blue:      #58a6ff;
+      --yellow:    #e3b341;
+      --orange:    #f0883e;
+      --red:       #f85149;
+      --purple:    #bc8cff;
+      --radius:    8px;
+      --mono:      'SF Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    body {
+      font-family: var(--mono);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    header h1 { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+    header h1 span { color: var(--muted); font-weight: 400; }
+
+    #ws-status {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #ws-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background .3s;
+    }
+    #ws-dot.connected  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    #ws-dot.error      { background: var(--red); }
+
+    /* ── Top bar ─────────────────────────────────────────────────────────── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    #ws-url {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 7px 12px;
+      outline: none;
+    }
+    #ws-url:focus { border-color: var(--blue); }
+
+    /* ── Main layout ─────────────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 0;
+    }
+
+    /* ── Left panel: controls + position ─────────────────────────────────── */
+    #left-panel {
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* Mic section */
+    #mic-section {
+      padding: 28px 24px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #mic-btn {
+      width: 88px; height: 88px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .2s;
+      position: relative;
+    }
+    #mic-btn:hover { border-color: var(--blue); }
+    #mic-btn.recording {
+      border-color: var(--red);
+      background: rgba(248, 81, 73, .12);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(248,81,73,.4); }
+      50%       { box-shadow: 0 0 0 12px rgba(248,81,73,0); }
+    }
+
+    #mic-btn svg { width: 32px; height: 32px; fill: var(--muted); transition: fill .2s; }
+    #mic-btn:hover svg, #mic-btn.recording svg { fill: var(--text); }
+
+    #mic-label { font-size: 12px; color: var(--muted); }
+    #mic-btn.recording + #mic-label { color: var(--red); }
+
+    /* VU meter */
+    #vu-wrap {
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #vu-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--green), var(--yellow), var(--red));
+      transition: width .05s linear;
+      border-radius: 2px;
+    }
+
+    /* Reset button */
+    #reset-btn {
+      padding: 6px 16px;
+      font-family: var(--mono);
+      font-size: 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    #reset-btn:hover { border-color: var(--orange); color: var(--orange); }
+
+    /* State section */
+    #state-section {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    #state-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: rgba(139,148,158,.12);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      align-self: flex-start;
+      transition: all .2s;
+    }
+    #state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+
+    /* State colours */
+    .state-searching        { background: rgba(227,179,65,.1) !important; color: var(--yellow) !important; border-color: rgba(227,179,65,.3) !important; }
+    .state-searching        #state-dot { background: var(--yellow); }
+    .state-tracking         { background: rgba(63,185,80,.1) !important; color: var(--green) !important; border-color: rgba(63,185,80,.3) !important; }
+    .state-tracking         #state-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .state-tracking_speculative { background: rgba(88,166,255,.1) !important; color: var(--blue) !important; border-color: rgba(88,166,255,.3) !important; }
+    .state-tracking_speculative #state-dot { background: var(--blue); }
+    .state-searching_speculative { background: rgba(240,136,62,.1) !important; color: var(--orange) !important; border-color: rgba(240,136,62,.3) !important; }
+    .state-searching_speculative #state-dot { background: var(--orange); }
+
+    /* Confidence */
+    #conf-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+    #conf-bar-wrap { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    #conf-bar { height: 100%; width: 0%; background: var(--green); border-radius: 2px; transition: width .3s, background .3s; }
+    #conf-val { width: 36px; text-align: right; color: var(--text); }
+
+    /* Position card */
+    #position-section {
+      padding: 20px 24px;
+      flex: 1;
+    }
+    #position-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 120px;
+      position: relative;
+      overflow: hidden;
+    }
+    #position-card.tracking   { border-color: rgba(63,185,80,.4); }
+    #position-card.speculative { border-color: rgba(88,166,255,.3); opacity: .85; }
+    #position-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--border);
+      transition: background .3s;
+    }
+    #position-card.tracking::before   { background: var(--green); }
+    #position-card.speculative::before { background: var(--blue); }
+
+    .pos-label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .pos-surah { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.1; }
+    .pos-ayah  { font-size: 13px; color: var(--muted); }
+    .pos-word  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Switch alert */
+    #switch-alert {
+      display: none;
+      margin: 0 24px 16px;
+      padding: 10px 14px;
+      background: rgba(248,81,73,.1);
+      border: 1px solid rgba(248,81,73,.3);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--red);
+      animation: fadeIn .3s;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } }
+
+    /* ── Right panel: debug ──────────────────────────────────────────────── */
+    #right-panel {
+      display: grid;
+      grid-template-rows: 1fr 160px;
+    }
+
+    #debug-top {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .debug-pane {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .debug-pane + .debug-pane { border-left: 1px solid var(--border); }
+
+    .pane-header {
+      padding: 8px 16px;
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .pane-header button {
+      font-family: var(--mono);
+      font-size: 10px;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 2px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .pane-header button:hover { color: var(--text); }
+
+    .pane-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+      font-size: 12px;
+    }
+    .pane-body::-webkit-scrollbar { width: 4px; }
+    .pane-body::-webkit-scrollbar-track { background: transparent; }
+    .pane-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Caption / transcript area */
+    #transcript-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #transcript {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px 6px;
+      direction: rtl;
+      text-align: right;
+      unicode-bidi: embed;
+      font-size: 18px;
+      line-height: 2;
+      color: var(--text);
+      word-break: break-word;
+    }
+    #transcript::-webkit-scrollbar { width: 4px; }
+    #transcript::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .t-word {
+      display: inline;
+      animation: wordIn .15s ease-out;
+    }
+    @keyframes wordIn { from { opacity: 0; } to { opacity: 1; } }
+    #live-caption {
+      padding: 8px 16px;
+      direction: rtl;
+      text-align: right;
+      unicode-bidi: embed;
+      font-size: 14px;
+      color: var(--blue);
+      font-style: italic;
+      min-height: 32px;
+      border-top: 1px solid var(--border);
+      opacity: .75;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Event log rows */
+    .log-row {
+      display: flex;
+      gap: 10px;
+      padding: 4px 16px;
+      font-size: 11px;
+      animation: slideIn .15s;
+    }
+    .log-time { color: var(--muted); flex-shrink: 0; width: 56px; }
+    .log-badge {
+      flex-shrink: 0;
+      font-size: 9px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .log-badge.lock    { background: rgba(63,185,80,.15);  color: var(--green); }
+    .log-badge.search  { background: rgba(227,179,65,.12); color: var(--yellow); }
+    .log-badge.switch  { background: rgba(248,81,73,.15);  color: var(--red); }
+    .log-badge.spec    { background: rgba(88,166,255,.15); color: var(--blue); }
+    .log-badge.error   { background: rgba(248,81,73,.2);   color: var(--red); }
+    .log-msg { flex: 1; color: var(--muted); }
+
+    /* Raw messages panel */
+    #raw-panel {
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #raw-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 16px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    #raw-body::-webkit-scrollbar { width: 4px; }
+    #raw-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .raw-msg { padding: 2px 0; border-bottom: 1px solid rgba(48,54,61,.4); }
+    .raw-msg.type-token    { color: #6e7681; }
+    .raw-msg.type-position { color: var(--muted); }
+    .raw-msg.type-ready    { color: var(--green); }
+    .raw-msg.type-error    { color: var(--red); }
+  </style>
+</head>
+
+<body>
+
+<!-- ── Header ───────────────────────────────────────────────────────────── -->
+<header>
+  <h1>Quran Tracker <span>/ debug</span></h1>
+  <div id="ws-status">
+    <div id="ws-dot"></div>
+    <span id="ws-label">disconnected</span>
+  </div>
+</header>
+
+<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
+<div id="topbar">
+  <input id="ws-url" type="text" value="ws://localhost:8000/track" spellcheck="false">
+  <button id="connect-btn" style="
+    padding: 7px 18px; font-family: var(--mono); font-size: 13px;
+    background: var(--blue); color: #0d1117; border: none;
+    border-radius: var(--radius); cursor: pointer; font-weight: 600;">
+    Connect
+  </button>
+</div>
+
+<!-- ── Main ─────────────────────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Left panel -->
+  <div id="left-panel">
+
+    <!-- Mic -->
+    <div id="mic-section">
+      <button id="mic-btn" disabled title="Connect first">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 1a3.5 3.5 0 0 0-3.5 3.5v7a3.5 3.5 0 0 0 7 0v-7A3.5 3.5 0 0 0 12 1z"/>
+          <path d="M19 10v1.5a7 7 0 0 1-14 0V10H3v1.5a9 9 0 0 0 8 8.94V22H8v2h8v-2h-3v-1.56A9 9 0 0 0 21 11.5V10h-2z"/>
+        </svg>
+      </button>
+      <span id="mic-label">mic off</span>
+      <div id="vu-wrap"><div id="vu-bar"></div></div>
+      <button id="reset-btn" style="display:none">Reset tracker</button>
+    </div>
+
+    <!-- State -->
+    <div id="state-section">
+      <div id="state-badge">
+        <div id="state-dot"></div>
+        <span id="state-text">—</span>
+      </div>
+      <div id="conf-row">
+        <span>conf</span>
+        <div id="conf-bar-wrap"><div id="conf-bar"></div></div>
+        <span id="conf-val">—</span>
+      </div>
+      <div style="font-size:11px; color:var(--muted);">
+        Buffer: <span id="buf-len" style="color:var(--text)">—</span> final tokens
+      </div>
+    </div>
+
+    <!-- Switch alert -->
+    <div id="switch-alert">⚡ Switched from <span id="switch-from-txt"></span></div>
+
+    <!-- Position -->
+    <div id="position-section">
+      <div id="position-card">
+        <div class="pos-label">Current position</div>
+        <div class="pos-surah" id="pos-surah" style="color:var(--muted); font-size:14px; font-weight:400;">
+          Waiting…
+        </div>
+        <div class="pos-ayah" id="pos-ayah"></div>
+        <div class="pos-word" id="pos-word"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right panel: debug panes -->
+  <div id="right-panel">
+
+    <div id="debug-top">
+      <!-- STT caption / transcript -->
+      <div class="debug-pane">
+        <div class="pane-header">
+          STT transcript
+          <button onclick="clearTranscript()">clear</button>
+        </div>
+        <div id="transcript-wrap">
+          <div id="transcript"></div>
+          <div id="live-caption"></div>
+        </div>
+      </div>
+
+      <!-- Event log -->
+      <div class="debug-pane">
+        <div class="pane-header">
+          Event log
+          <button onclick="clearPane('event-log')">clear</button>
+        </div>
+        <div class="pane-body" id="event-log"></div>
+      </div>
+    </div>
+
+    <!-- Raw messages -->
+    <div id="raw-panel">
+      <div class="pane-header">
+        Raw WebSocket messages (last 20)
+        <button onclick="clearPane('raw-body')">clear</button>
+      </div>
+      <div id="raw-body"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+// ── Surah names ──────────────────────────────────────────────────────────────
+const SURAHS = {
+  1:"Al-Fatiha",2:"Al-Baqarah",3:"Ali 'Imran",4:"An-Nisa",5:"Al-Ma'idah",
+  6:"Al-An'am",7:"Al-A'raf",8:"Al-Anfal",9:"At-Tawbah",10:"Yunus",
+  11:"Hud",12:"Yusuf",13:"Ar-Ra'd",14:"Ibrahim",15:"Al-Hijr",16:"An-Nahl",
+  17:"Al-Isra",18:"Al-Kahf",19:"Maryam",20:"Ta-Ha",21:"Al-Anbiya",
+  22:"Al-Hajj",23:"Al-Mu'minun",24:"An-Nur",25:"Al-Furqan",
+  26:"Ash-Shu'ara",27:"An-Naml",28:"Al-Qasas",29:"Al-'Ankabut",30:"Ar-Rum",
+  31:"Luqman",32:"As-Sajdah",33:"Al-Ahzab",34:"Saba",35:"Fatir",
+  36:"Ya-Sin",37:"As-Saffat",38:"Sad",39:"Az-Zumar",40:"Ghafir",
+  41:"Fussilat",42:"Ash-Shura",43:"Az-Zukhruf",44:"Ad-Dukhan",
+  45:"Al-Jathiyah",46:"Al-Ahqaf",47:"Muhammad",48:"Al-Fath",
+  49:"Al-Hujurat",50:"Qaf",51:"Adh-Dhariyat",52:"At-Tur",53:"An-Najm",
+  54:"Al-Qamar",55:"Ar-Rahman",56:"Al-Waqi'ah",57:"Al-Hadid",
+  58:"Al-Mujadila",59:"Al-Hashr",60:"Al-Mumtahanah",61:"As-Saf",
+  62:"Al-Jumu'ah",63:"Al-Munafiqun",64:"At-Taghabun",65:"At-Talaq",
+  66:"At-Tahrim",67:"Al-Mulk",68:"Al-Qalam",69:"Al-Haqqah",
+  70:"Al-Ma'arij",71:"Nuh",72:"Al-Jinn",73:"Al-Muzzammil",
+  74:"Al-Muddaththir",75:"Al-Qiyamah",76:"Al-Insan",77:"Al-Mursalat",
+  78:"An-Naba",79:"An-Nazi'at",80:"'Abasa",81:"At-Takwir",
+  82:"Al-Infitar",83:"Al-Mutaffifin",84:"Al-Inshiqaq",85:"Al-Buruj",
+  86:"At-Tariq",87:"Al-A'la",88:"Al-Ghashiyah",89:"Al-Fajr",90:"Al-Balad",
+  91:"Ash-Shams",92:"Al-Layl",93:"Ad-Duha",94:"Ash-Sharh",95:"At-Tin",
+  96:"Al-'Alaq",97:"Al-Qadr",98:"Al-Bayyinah",99:"Az-Zalzalah",
+  100:"Al-'Adiyat",101:"Al-Qari'ah",102:"At-Takathur",103:"Al-'Asr",
+  104:"Al-Humazah",105:"Al-Fil",106:"Quraysh",107:"Al-Ma'un",
+  108:"Al-Kawthar",109:"Al-Kafirun",110:"An-Nasr",111:"Al-Masad",
+  112:"Al-Ikhlas",113:"Al-Falaq",114:"An-Nas"
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ws          = null;
+let audioCtx    = null;
+let mediaStream = null;
+let processor   = null;
+let analyser    = null;
+let isRecording = false;
+let vuRaf       = null;
+let finalCount  = 0;          // final tokens received this session
+let rawCount    = 0;          // total raw messages
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const $wsDot       = document.getElementById('ws-dot');
+const $wsLabel     = document.getElementById('ws-label');
+const $wsUrl       = document.getElementById('ws-url');
+const $connectBtn  = document.getElementById('connect-btn');
+const $micBtn      = document.getElementById('mic-btn');
+const $micLabel    = document.getElementById('mic-label');
+const $vuBar       = document.getElementById('vu-bar');
+const $resetBtn    = document.getElementById('reset-btn');
+const $stateBadge  = document.getElementById('state-badge');
+const $stateText   = document.getElementById('state-text');
+const $confBar     = document.getElementById('conf-bar');
+const $confVal     = document.getElementById('conf-val');
+const $bufLen      = document.getElementById('buf-len');
+const $switchAlert = document.getElementById('switch-alert');
+const $switchFrom  = document.getElementById('switch-from-txt');
+const $posCard     = document.getElementById('position-card');
+const $posSurah    = document.getElementById('pos-surah');
+const $posAyah     = document.getElementById('pos-ayah');
+const $posWord     = document.getElementById('pos-word');
+const $eventLog    = document.getElementById('event-log');
+const $rawBody     = document.getElementById('raw-body');
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+function connectWS() {
+  const url = $wsUrl.value.trim();
+  setWsStatus('connecting');
+
+  ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    setWsStatus('connected');
+    $micBtn.disabled = false;
+    logEvent('ready', 'WebSocket connected');
+  };
+
+  ws.onmessage = (evt) => {
+    let data;
+    try { data = JSON.parse(evt.data); } catch { return; }
+    handleMessage(data);
+  };
+
+  ws.onclose = () => {
+    setWsStatus('disconnected');
+    $micBtn.disabled = true;
+    stopRecording();
+    logEvent('error', 'WebSocket closed');
+  };
+
+  ws.onerror = () => {
+    setWsStatus('error');
+    logEvent('error', 'WebSocket error');
+  };
+}
+
+function disconnectWS() {
+  stopRecording();
+  if (ws) { ws.close(); ws = null; }
+  setWsStatus('disconnected');
+}
+
+function setWsStatus(s) {
+  $wsDot.className = s;
+  $wsLabel.textContent = s;
+  $connectBtn.textContent = (s === 'connected') ? 'Disconnect' : 'Connect';
+}
+
+$connectBtn.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) disconnectWS();
+  else connectWS();
+});
+
+// ── Message handling ─────────────────────────────────────────────────────────
+function handleMessage(data) {
+  addRawMsg(data);
+
+  switch (data.type) {
+    case 'ready':
+      logEvent('ready', `Index ready · ${data.words_indexed.toLocaleString()} words`);
+      $resetBtn.style.display = 'inline-block';
+      break;
+
+    case 'token':
+      if (data.is_final) {
+        addFinalWord(data.text);
+        finalCount++;
+        $bufLen.textContent = finalCount;
+      } else {
+        updateLiveCaption(data.text);
+      }
+      break;
+
+    case 'position':
+      updatePosition(data);
+      break;
+
+    case 'error':
+      logEvent('error', data.message);
+      break;
+  }
+}
+
+// ── Caption / transcript ─────────────────────────────────────────────────────
+const $transcript   = document.getElementById('transcript');
+const $liveCaption  = document.getElementById('live-caption');
+
+function addFinalWord(text) {
+  $liveCaption.textContent = '';          // clear live caption on commit
+  if (!text.trim()) return;
+  const sp = document.createTextNode(' ');
+  const w  = document.createElement('span');
+  w.className   = 't-word';
+  w.textContent = text;
+  $transcript.appendChild(sp);
+  $transcript.appendChild(w);
+  // auto-scroll to bottom
+  $transcript.scrollTop = $transcript.scrollHeight;
+}
+
+function updateLiveCaption(text) {
+  $liveCaption.textContent = text;
+}
+
+function clearTranscript() {
+  $transcript.innerHTML  = '';
+  $liveCaption.textContent = '';
+  finalCount = 0;
+  $bufLen.textContent = '0';
+}
+
+// ── Position updates ─────────────────────────────────────────────────────────
+let lastCommittedSurah = null;
+let lastCommittedAyah  = null;
+
+function updatePosition(data) {
+  const { state, surah, ayah, word_pos, confidence, is_switch, switch_from } = data;
+  const isSpeculative = state.includes('speculative');
+  const isTracking    = state.includes('tracking');
+  const isSearching   = state.startsWith('searching');
+
+  // State badge
+  const stateClass = 'state-' + state;
+  $stateBadge.className = 'state-badge ' + stateClass;  // apply colour class to badge
+
+  // Rename badge for display
+  const labels = {
+    'searching':             'Searching',
+    'tracking':              'Tracking ●',
+    'tracking_speculative':  'Live ~ speculative',
+    'searching_speculative': 'Speculative hint',
+  };
+  $stateText.textContent = labels[state] || state;
+
+  // Confidence
+  const pct = Math.round((confidence || 0) * 100);
+  $confBar.style.width    = pct + '%';
+  $confBar.style.background = pct > 70 ? 'var(--green)' : pct > 40 ? 'var(--yellow)' : 'var(--red)';
+  $confVal.textContent = surah ? pct + '%' : '—';
+
+  // Position card
+  if (surah) {
+    $posCard.className = 'position-card ' + (isSpeculative ? 'speculative' : isTracking ? 'tracking' : '');
+    const name = SURAHS[surah] || `Surah ${surah}`;
+    $posSurah.textContent = `${surah}. ${name}`;
+    $posSurah.style.color = '';
+    $posSurah.style.fontSize = '';
+    $posSurah.style.fontWeight = '';
+    $posAyah.textContent  = `Ayah ${ayah}`;
+    $posWord.textContent  = word_pos != null ? `word ${word_pos + 1} in ayah` : '';
+  } else if (isSearching) {
+    $posCard.className = '';
+    $posSurah.textContent = 'Searching…';
+    $posSurah.style.color = 'var(--muted)';
+    $posSurah.style.fontSize = '14px';
+    $posSurah.style.fontWeight = '400';
+    $posAyah.textContent = '';
+    $posWord.textContent = '';
+  }
+
+  // Switch alert
+  if (is_switch && switch_from) {
+    const fromName = SURAHS[switch_from.surah] || `Surah ${switch_from.surah}`;
+    $switchFrom.textContent = `${switch_from.surah}. ${fromName}, Ayah ${switch_from.ayah}`;
+    $switchAlert.style.display = 'block';
+    setTimeout(() => { $switchAlert.style.display = 'none'; }, 6000);
+    logEvent('switch', `Switch: ${switch_from.surah}:${switch_from.ayah} → ${surah}:${ayah}`);
+  }
+
+  // Log committed state changes
+  if (state === 'tracking' && (surah !== lastCommittedSurah || ayah !== lastCommittedAyah)) {
+    lastCommittedSurah = surah;
+    lastCommittedAyah  = ayah;
+    const name = SURAHS[surah] || `S${surah}`;
+    logEvent('lock', `Lock: ${surah}:${ayah} · ${name} · conf=${pct}%`);
+  } else if (state === 'searching' && lastCommittedSurah !== null) {
+    lastCommittedSurah = null;
+    lastCommittedAyah  = null;
+    logEvent('search', 'Lost tracking — searching');
+  }
+}
+
+// ── Event log ─────────────────────────────────────────────────────────────────
+function logEvent(type, msg) {
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  const typeClass = { lock:'lock', ready:'lock', search:'search', switch:'switch', spec:'spec', error:'error' }[type] || 'search';
+  const now = new Date();
+  const t = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  row.innerHTML = `
+    <span class="log-time">${t}</span>
+    <span class="log-badge ${typeClass}">${type}</span>
+    <span class="log-msg">${escHtml(msg)}</span>`;
+  $eventLog.prepend(row);
+  trimChildren($eventLog, 60);
+}
+
+// ── Raw messages ─────────────────────────────────────────────────────────────
+function addRawMsg(data) {
+  rawCount++;
+  const el = document.createElement('div');
+  el.className = 'raw-msg type-' + (data.type || 'unknown');
+  el.textContent = `[${rawCount}] ` + JSON.stringify(data);
+  $rawBody.prepend(el);
+  trimChildren($rawBody, 20);
+}
+
+// ── Microphone & audio ───────────────────────────────────────────────────────
+$micBtn.addEventListener('click', () => {
+  if (isRecording) stopRecording();
+  else startRecording();
+});
+
+async function startRecording() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl:  false,
+        channelCount: 1,
+      }
+    });
+  } catch (e) {
+    logEvent('error', 'Mic permission denied: ' + e.message);
+    return;
+  }
+
+  audioCtx = new AudioContext();
+  await audioCtx.resume();
+
+  const source = audioCtx.createMediaStreamSource(mediaStream);
+
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  source.connect(analyser);
+
+  // ScriptProcessorNode — deprecated but universally supported
+  processor = audioCtx.createScriptProcessor(2048, 1, 1);
+  processor.onaudioprocess = onAudioProcess;
+  source.connect(processor);
+  processor.connect(audioCtx.destination);
+
+  isRecording = true;
+  $micBtn.classList.add('recording');
+  $micLabel.textContent = 'recording…';
+  $resetBtn.style.display = 'inline-block';
+  finalCount = 0;
+  $bufLen.textContent = '0';
+
+  vuRaf = requestAnimationFrame(updateVU);
+  logEvent('ready', `Recording started (native ${audioCtx.sampleRate} Hz → 16 kHz)`);
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  isRecording = false;
+
+  if (processor)    { processor.disconnect(); processor = null; }
+  if (analyser)     { analyser.disconnect();  analyser  = null; }
+  if (audioCtx)     { audioCtx.close();       audioCtx  = null; }
+  if (mediaStream)  { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (vuRaf)        { cancelAnimationFrame(vuRaf); vuRaf = null; }
+
+  $micBtn.classList.remove('recording');
+  $micLabel.textContent = 'mic off';
+  $vuBar.style.width = '0%';
+  logEvent('ready', 'Recording stopped');
+}
+
+function onAudioProcess(e) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const float32   = e.inputBuffer.getChannelData(0);
+  const pcm16     = downsampleToInt16(float32, audioCtx.sampleRate, 16000);
+  ws.send(pcm16.buffer);
+}
+
+// ── Audio helpers ─────────────────────────────────────────────────────────────
+function downsampleToInt16(float32, fromRate, toRate) {
+  if (fromRate === toRate) {
+    const out = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++)
+      out[i] = Math.max(-32768, Math.min(32767, float32[i] * 32767 | 0));
+    return out;
+  }
+  const ratio  = fromRate / toRate;
+  const len    = Math.floor(float32.length / ratio);
+  const out    = new Int16Array(len);
+  for (let i = 0; i < len; i++) {
+    const pos = i * ratio;
+    const lo  = Math.floor(pos);
+    const hi  = Math.min(lo + 1, float32.length - 1);
+    const f   = pos - lo;
+    const v   = float32[lo] * (1 - f) + float32[hi] * f;
+    out[i]    = Math.max(-32768, Math.min(32767, v * 32767 | 0));
+  }
+  return out;
+}
+
+function updateVU() {
+  if (!analyser || !isRecording) return;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+  const avg = data.reduce((a, b) => a + b, 0) / data.length;
+  $vuBar.style.width = Math.min(100, avg * 2.5) + '%';
+  vuRaf = requestAnimationFrame(updateVU);
+}
+
+// ── Reset button ──────────────────────────────────────────────────────────────
+$resetBtn.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'reset' }));
+    clearTranscript();
+    logEvent('search', 'Tracker reset');
+  }
+});
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function clearPane(id) { document.getElementById(id).innerHTML = ''; }
+
+function trimChildren(el, max) {
+  while (el.children.length > max) el.removeChild(el.lastChild);
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+</script>
+</body>
+</html>

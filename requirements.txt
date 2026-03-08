@@ -1,0 +1,10 @@
+# Core
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+
+# Soniox STT
+soniox>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0

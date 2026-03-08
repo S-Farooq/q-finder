@@ -246,6 +246,55 @@
     .pos-ayah  { font-size: 13px; color: var(--muted); }
     .pos-word  { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
+    /* Verse bar */
+    #verse-bar {
+      padding: 16px 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    #verse-bar-inner {
+      width: 100%;
+    }
+    #verse-meta {
+      font-size: 10px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-align: right;
+    }
+    #verse-display {
+      direction: rtl;
+      text-align: right;
+      unicode-bidi: embed;
+      font-size: 26px;
+      line-height: 1.9;
+      color: var(--muted);
+      word-break: break-word;
+      transition: color .3s;
+    }
+    #verse-display.loaded { color: var(--text); }
+    .verse-word {
+      display: inline;
+      padding: 3px 6px;
+      border-radius: 5px;
+      transition: background .2s, color .2s, box-shadow .2s;
+    }
+    .verse-word.track-commit {
+      background: rgba(63,185,80,.2);
+      color: var(--green);
+      font-weight: 700;
+      box-shadow: 0 0 12px rgba(63,185,80,.4);
+    }
+    .verse-word.track-spec {
+      background: rgba(88,166,255,.18);
+      color: var(--blue);
+    }
+
     /* Switch alert */
     #switch-alert {
       display: none;
@@ -426,6 +475,14 @@
     border-radius: var(--radius); cursor: pointer; font-weight: 600;">
     Connect
   </button>
+</div>
+
+<!-- ── Verse bar ────────────────────────────────────────────────────────── -->
+<div id="verse-bar">
+  <div id="verse-bar-inner">
+    <div id="verse-meta"></div>
+    <div id="verse-display">—</div>
+  </div>
 </div>
 
 <!-- ── Main ─────────────────────────────────────────────────────────────── -->
@@ -741,6 +798,20 @@ function updatePosition(data) {
     $posWord.textContent = '';
   }
 
+  // Verse display
+  if (surah && ayah) {
+    const hlClass = state === 'tracking' ? 'track-commit' : isSpeculative ? 'track-spec' : '';
+    if (surah !== _verseSurah || ayah !== _verseAyah) {
+      loadVerse(surah, ayah).then(() => renderVerse(word_pos, hlClass));
+    } else {
+      renderVerse(word_pos, hlClass);
+    }
+  } else if (!surah) {
+    _verseSurah = null; _verseAyah = null; _verseWords = [];
+    $verseDisplay.innerHTML = '';
+    $verseDisplay.className = '';
+  }
+
   // Switch alert
   if (is_switch && switch_from) {
     const fromName = SURAHS[switch_from.surah] || `Surah ${switch_from.surah}`;
@@ -761,6 +832,45 @@ function updatePosition(data) {
     lastCommittedAyah  = null;
     logEvent('search', 'Lost tracking — searching');
   }
+}
+
+// ── Verse display ─────────────────────────────────────────────────────────────
+const $verseDisplay = document.getElementById('verse-display');
+const $verseMeta    = document.getElementById('verse-meta');
+let _verseSurah = null, _verseAyah = null, _verseWords = [];
+
+function getHttpBase() {
+  return window.location.origin;
+}
+
+async function loadVerse(surah, ayah) {
+  if (surah === _verseSurah && ayah === _verseAyah) return;
+  _verseSurah = surah;
+  _verseAyah  = ayah;
+  _verseWords = [];
+  $verseDisplay.className = '';
+  $verseDisplay.textContent = '…';
+  $verseMeta.textContent = '';
+  try {
+    const r = await fetch(`${getHttpBase()}/verse/${surah}/${ayah}`);
+    const d = await r.json();
+    _verseWords = d.words || [];
+    $verseDisplay.className = 'loaded';
+    $verseMeta.textContent = `${SURAHS[surah] || 'Surah ' + surah}  ·  Ayah ${ayah}`;
+    renderVerse(null, '');
+  } catch { $verseDisplay.textContent = ''; }
+}
+
+function renderVerse(wordPos, hlClass) {
+  if (!_verseWords.length) return;
+  $verseDisplay.innerHTML = '';
+  _verseWords.forEach((word, i) => {
+    const sp = document.createElement('span');
+    sp.className = 'verse-word' + (i === wordPos && hlClass ? ' ' + hlClass : '');
+    sp.textContent = word;
+    $verseDisplay.appendChild(sp);
+    if (i < _verseWords.length - 1) $verseDisplay.appendChild(document.createTextNode(' '));
+  });
 }
 
 // ── Event log ─────────────────────────────────────────────────────────────────

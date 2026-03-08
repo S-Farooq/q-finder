@@ -129,6 +129,17 @@ async def health() -> JSONResponse:
     })
 
 
+@app.get("/verse/{surah}/{ayah}")
+async def verse_endpoint(surah: int, ayah: int) -> JSONResponse:
+    """Return the original words of a single ayah for display."""
+    if not _quran_index:
+        return JSONResponse({"error": "index not ready"}, status_code=503)
+    words = _quran_index.get_ayah_words(surah, ayah)
+    if not words:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"surah": surah, "ayah": ayah, "words": words})
+
+
 @app.get("/search")
 async def search_endpoint(q: str, top_k: int = 5) -> JSONResponse:
     """

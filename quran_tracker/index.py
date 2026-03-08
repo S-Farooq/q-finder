@@ -263,3 +263,7 @@ class QuranIndex:
         lo = max(0, global_pos - window)
         hi = min(self.n_words, global_pos + window)
         return " ".join(self.meta[i].original for i in range(lo, hi))
+
+    def get_ayah_words(self, surah: int, ayah: int) -> List[str]:
+        """Return the original (unvocalised) words of the given ayah in order."""
+        return [m.original for m in self.meta if m.surah == surah and m.ayah == ayah]
